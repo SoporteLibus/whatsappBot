@@ -1,11 +1,19 @@
 const express = require('express');
-const createError = require('http-errors');
-const morgan = require('morgan');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal')
+const cors = require('cors');
+const colored = require('colored.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const bodyParser = require('body-parser')
 require('dotenv').config();
 
 const app = express();
+
+app.use(cors())
+app.use(express.json({type: ['application/json', 'text/plain']}));
+app.use(express.urlencoded({extended:true}));
+app.use(express.json({limit:'1mb'}))
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 
 const client = new Client({
   puppeteer: { headless: true }, // Make headless true or remove to run browser in background
@@ -28,28 +36,43 @@ client.on('qr', qr => {
 });
 
 client.on('authenticated', session => {
-  console.log('AUTHENTICATED',)
+  console.log(colored.bright_yellow('AUTHENTICATED'),)
 });
 
 client.on('auth_failure', msg => {
   // Fired if session restore was unsuccessfull
-  console.error('AUTHENTICATION FAILURE', msg);
+  console.error(colored.bright_red('AUTHENTICATION FAILURE'), msg);
 });
 
 client.on('ready', () => {
-  console.log('READY');
+  console.log(colored.bright_yellow('READY'));
 });
 
-client.on('message', msg => {
-  const { from, to, body } = msg
+client.on('message', msgs => {
+  const { from, to, body } = msgs
   console.log(from, to, body)
 })
 
+const sendMedia = (to, file) => {
+  const download = "./pdfs/"+file;
+  const mediaFile = MessageMedia.fromFilePath(download);
+  client.sendMessage(to, mediaFile);
+  console.log(colored.bright_green('Archivo enviado'));
+  }
+
+app.all('/*', function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "X-Requested-With");
+  next();
+});
+
 app.post('/sendmessage', async (req, res, next) => {
   try {
-    const { number, message } = req.body; // Get the body
-    const msg = await client.sendMessage(`${number}@c.us`, message); // Send the message
-    res.send({ msg }); // Send the response
+    const { number, message, media } = req.body; // Get the body
+    const msg = await client.sendMessage(number + "@c.us", message); // Send the message
+    const data = sendMedia(number + "@c.us", media);
+    res.send({ msg, data }); // Send the response
+    console.log(colored.bright_green('Mensaje enviado desde post'));
   } catch (error) {
     next(error);
   }
